@@ -23,6 +23,9 @@ describe("getServerEnv", () => {
   });
 
   it("parses a valid environment and applies defaults", () => {
+    // CI sets these at job level; clear them so the defaults apply.
+    vi.stubEnv("PASSCODE_SESSION_DAYS", undefined);
+    vi.stubEnv("GEOCODE_COUNTRY_CODES", undefined);
     const env = getServerEnv();
     expect(env.PASSCODE_SESSION_DAYS).toBe(30);
     expect(env.GEOCODE_COUNTRY_CODES).toBe("vn");
