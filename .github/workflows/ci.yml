@@ -1,0 +1,93 @@
+name: CI
+
+# Pull requests run this directly; pushes to main run it through deploy.yml before deploying.
+on:
+  pull_request:
+  workflow_call:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  verify:
+    name: Lint, test, build, scan, e2e
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      # Throwaway CI-only values; the local Supabase stack's keys are generated per run.
+      E2E_PASSCODE: ci-class-passcode
+      NOMINATIM_CONTACT_EMAIL: ci@example.invalid
+      GEOCODE_COUNTRY_CODES: vn
+      PASSCODE_SESSION_DAYS: "1"
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Unit tests
+        run: npm test
+
+      - name: Start local Supabase
+        run: npx supabase start
+
+      - name: Database lint
+        run: npx supabase db lint --level warning --fail-on error
+
+      - name: Database tests (pgTAP)
+        run: npx supabase test db
+
+      - name: Point the app at the local stack
+        run: |
+          set -euo pipefail
+          eval "$(npx supabase status -o env | grep -E '^(API_URL|PUBLISHABLE_KEY|SECRET_KEY)=')"
+          passcode_hash="$(printf '%s' "$E2E_PASSCODE" | node scripts/hash-passcode.mjs)"
+          session_secret="$(openssl rand -base64 48)"
+          rate_limit_salt="$(openssl rand -hex 24)"
+          for value in "$PUBLISHABLE_KEY" "$SECRET_KEY" "$session_secret" "$rate_limit_salt"; do
+            echo "::add-mask::$value"
+          done
+          {
+            echo "SUPABASE_URL=$API_URL"
+            echo "SUPABASE_PUBLISHABLE_KEY=$PUBLISHABLE_KEY"
+            echo "SUPABASE_SECRET_KEY=$SECRET_KEY"
+            echo "CLASS_PASSCODE_HASH=$passcode_hash"
+            echo "SESSION_SECRET=$session_secret"
+            echo "RATE_LIMIT_SALT=$rate_limit_salt"
+          } >> "$GITHUB_ENV"
+
+      - name: Build
+        run: npm run build
+
+      - name: Client bundle key scan
+        run: npm run scan:bundle
+
+      - name: Install Playwright Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: End-to-end tests
+        run: npm run test:e2e
+
+      - name: Upload Playwright report
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: playwright-report
+          path: |
+            playwright-report/
+            test-results/
+          retention-days: 7

@@ -1,0 +1,103 @@
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  ci:
+    uses: ./.github/workflows/ci.yml
+
+  deploy:
+    name: Back up, migrate, deploy to Vercel production
+    needs: ci
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: production
+    concurrency:
+      group: production-deploy
+      cancel-in-progress: false
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+      SUPABASE_PROJECT_ID: ${{ secrets.SUPABASE_PROJECT_ID }}
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+      VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+      VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - run: npm ci
+
+      - name: Link the production Supabase project
+        # The CLI reads SUPABASE_DB_PASSWORD from the environment.
+        run: npx supabase link --project-ref "$SUPABASE_PROJECT_ID"
+
+      - name: Back up the production database (encrypted)
+        env:
+          BACKUP_PASSPHRASE: ${{ secrets.BACKUP_PASSPHRASE }}
+        run: |
+          set -euo pipefail
+          if [ -z "$BACKUP_PASSPHRASE" ]; then
+            echo "BACKUP_PASSPHRASE is not set; refusing to migrate without a backup." >&2
+            exit 1
+          fi
+          umask 077
+          workdir="$(mktemp -d)"
+          # The plaintext dump never outlives this step.
+          trap 'rm -rf "$workdir"' EXIT
+          npx supabase db dump --linked -f "$workdir/schema.sql"
+          npx supabase db dump --linked --data-only -f "$workdir/data.sql"
+          tar czf "$workdir/backup.tar.gz" -C "$workdir" schema.sql data.sql
+          mkdir -p backup
+          printf '%s' "$BACKUP_PASSPHRASE" | gpg --batch --yes --pinentry-mode loopback \
+            --symmetric --cipher-algo AES256 --passphrase-fd 0 \
+            -o "backup/db-backup-${GITHUB_SHA}.tar.gz.gpg" "$workdir/backup.tar.gz"
+
+      - name: Upload the encrypted backup
+        uses: actions/upload-artifact@v7
+        with:
+          name: db-backup-${{ github.sha }}
+          path: backup/*.gpg
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Apply migrations
+        run: npx supabase db push --linked --yes
+
+      - name: Install the Vercel CLI
+        run: npm install --global vercel@64.5.0
+
+      - name: Build with production settings
+        run: |
+          vercel pull --yes --environment=production --token="$VERCEL_TOKEN"
+          vercel build --prod --token="$VERCEL_TOKEN"
+
+      - name: Client bundle key scan (prebuilt output)
+        # Loads the pulled production values so the scan can look for their literal values too.
+        run: node --env-file=.vercel/.env.production.local scripts/check-client-bundle.mjs
+
+      - name: Deploy to production
+        id: deploy
+        run: |
+          url="$(vercel deploy --prebuilt --prod --token="$VERCEL_TOKEN")"
+          echo "url=$url" >> "$GITHUB_OUTPUT"
+
+      - name: Smoke test
+        env:
+          PRODUCTION_URL: ${{ vars.PRODUCTION_URL || steps.deploy.outputs.url }}
+        run: |
+          set -euo pipefail
+          headers="$(curl -sS -o /dev/null -D - "$PRODUCTION_URL/")"
+          echo "$headers" | grep -iE '^HTTP/[0-9.]+ 307' >/dev/null || { echo "expected a 307 redirect" >&2; echo "$headers" | head -1 >&2; exit 1; }
+          echo "$headers" | grep -iE '^location: .*/unlock' >/dev/null || { echo "expected a redirect to /unlock" >&2; exit 1; }
+          echo "$headers" | grep -iE '^x-robots-tag: noindex, nofollow' >/dev/null || { echo "missing X-Robots-Tag" >&2; exit 1; }
+          echo "Smoke test passed."

@@ -1,0 +1,18 @@
+[
+  {
+    "place_id": 254163019,
+    "licence": "Data © OpenStreetMap contributors, ODbL 1.0. http://osm.org/copyright",
+    "osm_type": "way",
+    "osm_id": 34646512,
+    "lat": "21.0287797",
+    "lon": "105.8523800",
+    "category": "natural",
+    "type": "water",
+    "place_rank": 22,
+    "importance": 0.4598,
+    "addresstype": "water",
+    "name": "Hồ Hoàn Kiếm",
+    "display_name": "Hồ Hoàn Kiếm, Phường Hoàn Kiếm, Thành phố Hà Nội, Việt Nam",
+    "boundingbox": ["21.0254260", "21.0323069", "105.8509130", "105.8540680"]
+  }
+]
