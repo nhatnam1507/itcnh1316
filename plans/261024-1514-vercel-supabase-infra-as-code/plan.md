@@ -1,7 +1,7 @@
 ---
 title: "Vercel and Supabase Infrastructure as Code"
 description: "Manage the production Supabase project, the Vercel project and the GitHub production environment with Terraform on HCP Terraform, applied from GitHub Actions before every deploy."
-status: pending
+status: in-progress
 priority: P1
 effort: 13h
 branch: main
@@ -59,10 +59,10 @@ Responsibilities stay split by tool:
 
 | # | Phase | Status | Depends on |
 |---|-------|--------|------------|
-| 1 | [Terraform foundation and HCP workspace](./phase-01-terraform-foundation.md) | Pending | — |
-| 2 | [Supabase project, settings and keys](./phase-02-supabase-resources.md) | Pending | 1 |
-| 3 | [Vercel project and GitHub production environment](./phase-03-vercel-and-github-resources.md) | Pending | 2 |
-| 4 | [Pipeline wiring, cutover and docs](./phase-04-pipeline-cutover-and-docs.md) | Pending | 3 |
+| 1 | [Terraform foundation and HCP workspace](./phase-01-terraform-foundation.md) | In progress (code done, live steps open) | — |
+| 2 | [Supabase project, settings and keys](./phase-02-supabase-resources.md) | In progress (code done, live steps open) | 1 |
+| 3 | [Vercel project and GitHub production environment](./phase-03-vercel-and-github-resources.md) | In progress (code done, live steps open) | 2 |
+| 4 | [Pipeline wiring, cutover and docs](./phase-04-pipeline-cutover-and-docs.md) | In progress (code done, live steps open) | 3 |
 
 Phases are sequential. Phase 3 consumes phase 2's project ref and API keys, and phase 4 wires the finished module into CI.
 

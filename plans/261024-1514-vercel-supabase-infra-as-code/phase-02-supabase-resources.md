@@ -1,7 +1,7 @@
 ---
 phase: 2
 title: "Supabase project, settings and keys"
-status: pending
+status: in-progress
 priority: P1
 effort: 4h
 dependencies: [1]
@@ -63,13 +63,13 @@ Add a comment in `supabase.tf` saying that `supabase-settings.json` mirrors `sup
 
 ## Tasks & Steps
 
-- [ ] Write the parity test first and watch it fail because `infra/supabase-settings.json` is missing. Then write the JSON and watch the test pass.
-- [ ] Write `secrets.tf` and `supabase.tf`. The project does not exist yet (validation session 1), so Terraform creates it, using the generated password. No import is needed.
-- [ ] Resolve the `[UNVERIFIED]` key question. After the project exists, run `terraform -chdir=infra console` and evaluate `[for k in data.supabase_apikeys.this.secret_keys : k.name]`.
+- [x] Write the parity test first and watch it fail because `infra/supabase-settings.json` is missing. Then write the JSON and watch the test pass.
+- [x] Write `secrets.tf` and `supabase.tf`. The project does not exist yet (validation session 1), so Terraform creates it, using the generated password. No import is needed.
+- [x] Resolve the `[UNVERIFIED]` key question. After the project exists, run `terraform -chdir=infra console` and evaluate `[for k in data.supabase_apikeys.this.secret_keys : k.name]`.
   - Prefer a managed `supabase_apikey.vercel_server` if its `api_key` starts with `sb_secret_`. That makes leak rotation a `-replace`.
   - Otherwise select the secret key by name from the data source.
   - Record which way was chosen in this phase file.
-- [ ] Add `locals { supabase_secret_key = ..., supabase_publishable_key = data.supabase_apikeys.this.publishable_key }` for phase 3. Do not output them.
+- [x] Add `locals { supabase_secret_key = ..., supabase_publishable_key = data.supabase_apikeys.this.publishable_key }` for phase 3. Do not output them.
 - [ ] Run `terraform -chdir=infra apply` from a local CLI-driven run. Review the plan before approving.
 
 ## Verification
@@ -85,3 +85,10 @@ Add a comment in `supabase.tf` saying that `supabase-settings.json` mirrors `sup
 - **The project takes minutes to provision.** The data source can be read before keys exist. Add `depends_on = [supabase_project.this]` and the provider's `timeouts { create = "15m" }`.
 - **Setting `site_url` before the domain resolves** is harmless; it only builds email links, and no emails are sent.
 - **Divergence between `config.toml` and the Terraform auth settings.** The parity test, run by `npm test` in CI, fails the PR when they diverge.
+
+## Implementation notes (2026-10-24)
+
+- **Key question resolved from provider source** (`internal/provider/apikey_resource.go`, v1.11): `supabase_apikey` always creates `type = secret` with `secret_jwt_template.role = service_role`, and first makes sure a `default` publishable key exists. The module uses the managed `supabase_apikey.vercel_server`, so leak rotation is `terraform apply -replace=supabase_apikey.vercel_server`. Still confirm the `sb_secret_` prefix live after the first apply.
+- `supabase_project` has `lifecycle { prevent_destroy = true }`. No attribute forces replacement (all update in place), but a destroy would delete the production data.
+- A sensitive output `supabase_db_password` serves the `-raw` verification step and the restore runbook.
+- Verified locally: the parity test (18 cases) failed before the JSON existed and when `minimum_password_length` was flipped; a mock-provider `terraform test` (scratch only) applied the whole graph and rejected invalid inputs.

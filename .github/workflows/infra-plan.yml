@@ -1,0 +1,48 @@
+name: Infra plan
+
+# Pull requests that touch infra/ get a speculative HCP Terraform plan. deploy.yml applies on main.
+on:
+  pull_request:
+    paths:
+      - infra/**
+      - .github/workflows/infra-plan.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: infra-plan-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  plan:
+    name: Infra plan
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      # Empty on fork pull requests, which then skip the remote plan.
+      TF_API_TOKEN: ${{ secrets.TF_API_TOKEN }}
+      TF_IN_AUTOMATION: "1"
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: hashicorp/setup-terraform@v4
+        with:
+          terraform_version: 1.17.0
+          cli_config_credentials_token: ${{ secrets.TF_API_TOKEN }}
+          terraform_wrapper: false
+
+      - name: Format check
+        run: terraform -chdir=infra fmt -check -recursive
+
+      - name: Validate
+        run: |
+          terraform -chdir=infra init -input=false -backend=false
+          terraform -chdir=infra validate
+
+      - name: Speculative plan (HCP Terraform)
+        if: env.TF_API_TOKEN != ''
+        run: |
+          terraform -chdir=infra init -input=false
+          terraform -chdir=infra plan -input=false

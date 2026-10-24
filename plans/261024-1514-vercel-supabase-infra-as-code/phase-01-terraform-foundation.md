@@ -1,7 +1,7 @@
 ---
 phase: 1
 title: "Terraform foundation and HCP workspace"
-status: pending
+status: in-progress
 priority: P1
 effort: 2h
 dependencies: []
@@ -55,14 +55,14 @@ Create the `infra/` root module skeleton: pinned Terraform and provider versions
 
 ## Tasks & Steps
 
-- [ ] Install Terraform 1.17.0 locally with `mise use --global terraform@1.17.0` and confirm that `terraform version` prints `v1.17.0`.
+- [x] Install Terraform 1.17.0 locally with `mise use --global terraform@1.17.0` and confirm that `terraform version` prints `v1.17.0`.
 - [ ] In HCP Terraform, create the organization (or reuse one) and a CLI-driven workspace `classmate-directory-production`:
   - Execution mode: Remote, with Terraform version 1.17.0.
   - Restrict team access to the maintainer.
 - [ ] Add the five sensitive Terraform variables from the table to the workspace.
-- [ ] Write `versions.tf`, `providers.tf`, `variables.tf` and `production.auto.tfvars`, with the real organization slug, team ID and repository name.
+- [x] Write `versions.tf`, `providers.tf`, `variables.tf` and `production.auto.tfvars`, with the real organization slug, team ID and repository name.
 - [ ] Run `terraform login`, then `terraform -chdir=infra init`. Generate and commit the lock file.
-- [ ] Update `.gitignore`.
+- [x] Update `.gitignore`.
 
 ## Verification
 
@@ -76,3 +76,9 @@ Create the `infra/` root module skeleton: pinned Terraform and provider versions
 
 - **Organization slug committed in `versions.tf`.** The slug is not a secret, but a fork would point at it. Forks have no token, so their runs fail closed.
 - **Provider major upgrades.** The `~>` minor pins and the committed lock file keep upgrades deliberate.
+
+## Implementation notes (2026-10-24)
+
+- HCP organization is `nhatnam1507`; the repository is `nhatnam1507/itcnh1316` (user decision).
+- `production.auto.tfvars` leaves `supabase_organization_id`, `vercel_team_id`, `production_domain` and `nominatim_contact_email` commented out until the operator has them. Remote runs fail closed on the missing values.
+- The lock file was generated with `terraform init -backend=false` plus `terraform providers lock -platform=linux_amd64`. `terraform login`, the HCP workspace, its variables and the remote `No changes` plan are still open.

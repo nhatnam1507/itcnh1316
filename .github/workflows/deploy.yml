@@ -7,19 +7,43 @@ on:
 permissions:
   contents: read
 
+# Workflow-level, so one run's infra apply and deploy never interleave with another run's.
+concurrency:
+  group: production-deploy
+  cancel-in-progress: false
+
 jobs:
   ci:
     uses: ./.github/workflows/ci.yml
 
-  deploy:
-    name: Back up, migrate, deploy to Vercel production
+  infra:
+    name: Apply infrastructure (HCP Terraform)
     needs: ci
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    env:
+      TF_IN_AUTOMATION: "1"
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: hashicorp/setup-terraform@v4
+        with:
+          terraform_version: 1.17.0
+          cli_config_credentials_token: ${{ secrets.TF_API_TOKEN }}
+          terraform_wrapper: false
+
+      - name: Terraform apply
+        # Writes the Supabase settings, the Vercel project and env, and this environment's deploy secrets.
+        run: |
+          terraform -chdir=infra init -input=false
+          terraform -chdir=infra apply -input=false -auto-approve
+
+  deploy:
+    name: Back up, migrate, deploy to Vercel production
+    needs: [ci, infra]
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
     environment: production
-    concurrency:
-      group: production-deploy
-      cancel-in-progress: false
     env:
       SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
       SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
@@ -81,9 +105,29 @@ jobs:
           vercel pull --yes --environment=production --token="$VERCEL_TOKEN"
           vercel build --prod --token="$VERCEL_TOKEN"
 
+      - uses: hashicorp/setup-terraform@v4
+        with:
+          terraform_version: 1.17.0
+          cli_config_credentials_token: ${{ secrets.TF_API_TOKEN }}
+          terraform_wrapper: false
+
       - name: Client bundle key scan (prebuilt output)
-        # Loads the pulled production values so the scan can look for their literal values too.
-        run: node --env-file=.vercel/.env.production.local scripts/check-client-bundle.mjs
+        # Vercel Secret values cannot be pulled, so their literal values come from Terraform state.
+        # Exported values take precedence over the pulled file in --env-file.
+        run: |
+          set -euo pipefail
+          terraform -chdir=infra init -input=false >/dev/null
+          literals="$(terraform -chdir=infra output -json scan_literals)"
+          for name in $(jq -r 'keys[]' <<<"$literals"); do
+            value="$(jq -r --arg name "$name" '.[$name]' <<<"$literals")"
+            if [ -z "$value" ]; then
+              echo "$name is empty in Terraform state; refusing a weakened scan." >&2
+              exit 1
+            fi
+            echo "::add-mask::$value"
+            export "$name=$value"
+          done
+          node --env-file=.vercel/.env.production.local scripts/check-client-bundle.mjs
 
       - name: Deploy to production
         id: deploy

@@ -1,7 +1,7 @@
 ---
 phase: 4
 title: "Pipeline wiring, cutover and docs"
-status: pending
+status: in-progress
 priority: P1
 effort: 4h
 dependencies: [3]
@@ -40,13 +40,13 @@ GitHub Actions plans infrastructure on pull requests and applies it on `main` be
 
 - [ ] Add the repository secret `TF_API_TOKEN`, an HCP team token limited to this workspace. It is the only GitHub secret set by hand.
 - [ ] Write `infra-plan.yml` and open a PR that touches `infra/`. Confirm the `Infra plan` check shows the speculative plan.
-- [ ] Change `deploy.yml` as described above.
-- [ ] **Probe `vercel pull` with Secret variables.** In the first deploy run, check that the scan step loads non-empty values from `.vercel/.env.production.local`. Print only `[ -n "$SUPABASE_SECRET_KEY" ] && echo present`, never the value.
+- [x] Change `deploy.yml` as described above.
+- [x] **Probe `vercel pull` with Secret variables.** In the first deploy run, check that the scan step loads non-empty values from `.vercel/.env.production.local`. Print only `[ -n "$SUPABASE_SECRET_KEY" ] && echo present`, never the value.
   - If the Secret values are missing, add a sensitive output `scan_literals` (the Secret runtime values) to `outputs.tf`.
   - In that case, the scan step reads them through `terraform output -json scan_literals`, masks each one with `::add-mask::`, and exports them before calling `scripts/check-client-bundle.mjs`.
 - [ ] Merge to `main` and watch the run. Infra apply must report no changes, or only the expected ones. Then backup, migrate, build, scan, deploy and the smoke test must all pass on `https://<production_domain>`.
 - [ ] Create the first admin as before, following the existing doc step. Users are data, not infrastructure.
-- [ ] Rewrite the docs:
+- [x] Rewrite the docs:
   - **First-time production setup:**
     1. Create the accounts and tokens (Supabase access token, Vercel token, fine-grained GitHub PAT, HCP workspace).
     2. Set the workspace variables, including the passcode hash from `node scripts/hash-passcode.mjs`.
@@ -74,3 +74,10 @@ GitHub Actions plans infrastructure on pull requests and applies it on `main` be
 - **A bad Terraform change breaks production config**, for example a wrong env value. Revert the commit; the next push re-applies the previous values and redeploys.
 - **HCP is unavailable.** Deploys block. The emergency path is `vercel deploy` and `supabase db push` from a workstation with the GitHub-held secrets, followed by a re-apply. Document this in one paragraph.
 - **The PR plan runs PR code with workspace credentials.** Acceptable for a one-maintainer private repository. Document that only trusted collaborators should get write access.
+
+## Implementation notes (2026-10-24)
+
+- **Probe resolved from the provider schema:** Vercel describes a sensitive variable as one that "cannot be read via the API or Vercel Dashboard once set", so `vercel pull` cannot download it. The fallback is implemented: the `scan_literals` sensitive output, and a deploy scan step that reads it, masks each value, and fails on an empty value instead of silently weakening the scan.
+- `actionlint` 1.7.12 passes on all workflows.
+- The repository is **public** (user decision; GitHub Free private repos cannot use environment secrets). This replaces the "private repository" assumption in the risks above: fork PRs still get no secrets, but Actions logs and the encrypted backup artifacts are world-readable, so the docs require a random `backup_passphrase`.
+- Open: `TF_API_TOKEN`, the first PR plan, the first green Deploy run, and the first admin.

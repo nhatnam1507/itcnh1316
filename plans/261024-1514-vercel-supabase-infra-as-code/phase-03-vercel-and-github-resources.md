@@ -1,7 +1,7 @@
 ---
 phase: 3
 title: "Vercel project and GitHub production environment"
-status: pending
+status: in-progress
 priority: P1
 effort: 3h
 dependencies: [2]
@@ -70,12 +70,12 @@ The names stay identical to today's, so the deploy steps in `deploy.yml` need no
 
 ## Tasks & Steps
 
-- [ ] Write `vercel.tf`:
+- [x] Write `vercel.tf`:
   - `framework = "nextjs"` and `node_version = "24.x"`, matching `.nvmrc` and `engines`.
   - `vercel_authentication { deployment_type = "standard_protection_new" }`.
   - `resource_config { function_default_regions = [var.vercel_function_region] }`, with `sin1` next to Supabase `ap-southeast-1`.
-- [ ] Write the environment-variable resource with the table above, then the domain resource.
-- [ ] Write `github.tf`. Build the secrets map in a `locals` block marked `sensitive`, and iterate over `nonsensitive(toset(keys(local.deploy_secrets)))` so that only names, never values, appear in resource addresses.
+- [x] Write the environment-variable resource with the table above, then the domain resource.
+- [x] Write `github.tf`. Build the secrets map in a `locals` block marked `sensitive`, and iterate over `nonsensitive(toset(keys(local.deploy_secrets)))` so that only names, never values, appear in resource addresses.
 - [ ] Apply locally, then re-plan.
 - [ ] Confirm that Vercel shows the domain as verified on the project. Vercel DNS needs no manual records.
 
@@ -92,3 +92,8 @@ The names stay identical to today's, so the deploy steps in `deploy.yml` need no
 - **GitHub environment adoption.** If the `production` environment already exists, `github_repository_environment` uses an idempotent PUT. Confirm the plan shows a create, not a destroy and recreate, before apply.
 - **The PAT needs the correct fine-grained permissions.** A 403 on apply names the missing permission. Fix it on the token and do not widen it to the classic `repo` scope.
 - **Rotating `SESSION_SECRET` logs every viewer out**, which is the existing documented behavior. Rotation only takes effect after the next deploy, and phase 4's pipeline always deploys after apply.
+
+## Implementation notes (2026-10-24)
+
+- `github_actions_environment_secret` uses `value`; `plaintext_value` is deprecated in provider 6.13.
+- Vercel env vars set only `sensitive`; `visibility` is inferred from it.

@@ -76,3 +76,19 @@ The unlock screen shows a three.js globe (`src/components/fx/holo-globe/`), load
 The pings, pulse, sweep, descent, globe animation and the other effects in `src/components/fx/` stop when the system asks for reduced motion. Animated text keeps the real text in a visually hidden copy, so accessible names and tests are unchanged. Coordinates are stored in the database, so loading the dashboard never calls a geocoder.
 
 MapLibre GL v6 loads its worker from a file next to its own module, and that file does not survive bundling. `scripts/copy-maplibre-worker.mjs` copies the worker into `public/maplibre/` before each dev run and build, and `src/components/map/maplibre-setup.ts` points MapLibre at it.
+
+## Infrastructure
+
+Production infrastructure is a Terraform root module in [`infra/`](../infra/). State lives in HCP Terraform (workspace `classmate-directory-production`, remote execution). `.github/workflows/infra-plan.yml` runs a speculative plan on pull requests that touch `infra/`, and `.github/workflows/deploy.yml` applies the module before every deploy.
+
+| Concern | Owner |
+|---|---|
+| Supabase project, Auth and API settings, API keys | Terraform (`supabase/supabase`) |
+| Vercel project settings, env vars, domain | Terraform (`vercel/vercel`) |
+| GitHub `production` environment, deploy secrets, `PRODUCTION_URL` | Terraform (`integrations/github`) |
+| Generated secrets (DB password, session secret, rate-limit salt) | Terraform (`hashicorp/random`) |
+| Database schema | `supabase db push` in `deploy.yml` |
+| App build and deploy | `vercel build` and `vercel deploy --prebuilt` in `deploy.yml` |
+| Local stack | `supabase/config.toml` |
+
+Production Auth and API settings come from `infra/supabase-settings.json`, which `scripts/supabase-settings-parity.test.ts` keeps equal to `supabase/config.toml`. See [Setup and Deployment](./setup-and-deployment.md) for the bootstrap and rotation steps.
